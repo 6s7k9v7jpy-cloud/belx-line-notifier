@@ -8,10 +8,15 @@ on:
   workflow_dispatch:
 
 
+permissions:
+  contents: write
+
+
 jobs:
   check:
 
     runs-on: ubuntu-latest
+
 
     steps:
 
@@ -37,3 +42,15 @@ jobs:
 
         run: |
           python app.py
+
+
+      - name: Save latest flyer
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
+
+          git add last_flyer.txt
+
+          git commit -m "Update last flyer" || exit 0
+
+          git push
