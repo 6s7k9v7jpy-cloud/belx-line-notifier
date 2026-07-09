@@ -36,6 +36,7 @@ def send_line(message):
 
 # ベルクスページ取得
 for i in range(3):
+
     try:
         response = requests.get(
             URL,
@@ -45,11 +46,13 @@ for i in range(3):
         break
 
     except requests.exceptions.RequestException:
+
         if i == 2:
             raise
 
 
 response.raise_for_status()
+
 
 soup = BeautifulSoup(
     response.text,
@@ -80,7 +83,8 @@ if pdf is None:
 print("最新PDF:", pdf)
 
 
-# 更新チェック
+
+# 更新確認
 last_pdf = ""
 
 if os.path.exists(LAST_FILE):
@@ -99,7 +103,7 @@ else:
     print("★★★★ 新しいチラシを検知しました！★★★★")
 
 
-    # PDF保存
+    # PDF取得
     pdf_data = requests.get(
         pdf,
         headers=headers,
@@ -112,7 +116,7 @@ else:
 
 
 
-    # PDF→画像
+    # PDF画像化
     images = convert_from_path(
         PDF_FILE,
         dpi=250
@@ -134,88 +138,143 @@ else:
 
 
 
-    # 商品候補抽出
     lines = [
-        line.strip()
-        for line in all_text.split("\n")
-        if line.strip()
+        x.strip()
+        for x in all_text.split("\n")
+        if x.strip()
     ]
+
 
 
     products = []
 
 
+    # 商品候補抽出
     for i, line in enumerate(lines):
 
-        # 円がある行を探す
-        if "円" in line or "￥" in line:
 
-            price_match = re.search(
-                r"(\d{2,4})円",
-                line
+        price_match = re.search(
+            r"(\d{2,4})円",
+            line
+        )
+
+
+        if price_match:
+
+
+            price = int(
+                price_match.group(1)
             )
 
 
-            if price_match:
+            # 安すぎる誤認識除外
+            if price < 50:
+                continue
 
-                price = int(
-                    price_match.group(1)
+
+            candidates = []
+
+
+            # 前3行を見る
+            for n in range(1,4):
+
+                if i-n >= 0:
+
+                    text = lines[i-n]
+
+
+                    # ノイズ除外
+                    if (
+                        len(text) >= 3
+                        and not re.search(
+                            r"[|@_]",
+                            text
+                        )
+                    ):
+                        candidates.append(text)
+
+
+
+            if candidates:
+
+                name = max(
+                    candidates,
+                    key=len
                 )
 
 
-                # 価格付近の商品名候補
-                before = ""
-
-                if i > 0:
-                    before = lines[i-1]
-
-
-                if len(before) > 1:
+                # 長すぎるOCR崩れ除外
+                if len(name) < 40:
 
                     products.append(
                         {
-                            "name": before,
+                            "name": name,
                             "price": price
                         }
                     )
 
 
 
-    # 安い順でTOP3
-    products = sorted(
-        products,
-        key=lambda x: x["price"]
+    # 重複削除
+    unique = []
+
+    seen = set()
+
+
+    for p in products:
+
+        key = (
+            p["name"],
+            p["price"]
+        )
+
+        if key not in seen:
+
+            seen.add(key)
+            unique.append(p)
+
+
+
+    # 安い順TOP3
+    top3 = sorted(
+        unique,
+        key=lambda x:x["price"]
+    )[:3]
+
+
+
+    message = (
+        "🛒 ベルクス今週のお買得候補\n\n"
     )
-
-
-    top3 = products[:3]
-
-
-    message = "🛒 ベルクス今週のお買得候補\n\n"
 
 
     if top3:
 
-        rank = 1
+        for index, item in enumerate(top3):
 
-        for item in top3:
+            rank = [
+                "🥇",
+                "🥈",
+                "🥉"
+            ][index]
+
 
             message += (
-                f"🥇 商品候補{rank}\n"
-                f"{item['name']}\n"
-                f"{item['price']}円\n\n"
+                f"{rank} {item['name']}\n"
+                f"💰 {item['price']}円\n\n"
             )
 
-            rank += 1
 
     else:
 
-        message += "商品情報を抽出できませんでした"
+        message += (
+            "商品を抽出できませんでした"
+        )
 
 
 
     message += (
-        "\n👇 チラシ全文\n"
+        "👇 チラシ全文\n"
         + pdf
     )
 
@@ -224,5 +283,6 @@ else:
 
 
 
+    # 保存
     with open(LAST_FILE, "w") as f:
         f.write(pdf)
