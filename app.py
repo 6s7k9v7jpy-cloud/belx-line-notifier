@@ -1,9 +1,6 @@
 import os
 import requests
 from bs4 import BeautifulSoup
-from pdf2image import convert_from_path
-
-from google import genai
 
 from linebot import LineBotApi
 from linebot.models import TextSendMessage
@@ -11,7 +8,6 @@ from linebot.models import TextSendMessage
 
 URL = "https://sunbelx.com/store/27"
 LAST_FILE = "last_flyer.txt"
-PDF_FILE = "flyer.pdf"
 
 
 headers = {
@@ -22,16 +18,10 @@ headers = {
 
 LINE_USER_ID = os.environ["LINE_USER_ID"]
 LINE_CHANNEL_ACCESS_TOKEN = os.environ["LINE_CHANNEL_ACCESS_TOKEN"]
-GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 
 
 line_bot_api = LineBotApi(
     LINE_CHANNEL_ACCESS_TOKEN
-)
-
-
-client = genai.Client(
-    api_key=GEMINI_API_KEY
 )
 
 
@@ -52,7 +42,7 @@ try:
     response = requests.get(
         URL,
         headers=headers,
-        timeout=(10,120)
+        timeout=(10, 120)
     )
 
     response.raise_for_status()
@@ -103,7 +93,7 @@ print(
 )
 
 
-# 更新確認
+# 前回PDF確認
 
 old_pdf = ""
 
@@ -112,7 +102,8 @@ if os.path.exists(LAST_FILE):
 
     with open(
         LAST_FILE,
-        "r"
+        "r",
+        encoding="utf-8"
     ) as f:
 
         old_pdf = f.read().strip()
@@ -134,127 +125,32 @@ print(
 )
 
 
-# PDFダウンロード
+# LINE通知
 
-pdf_response = requests.get(
-    pdf,
-    headers=headers,
-    timeout=(10,120)
-)
+message = f"""
+★★★★ 新しいベルクスチラシを検知しました！★★★★
 
-pdf_response.raise_for_status()
+ベルクスのチラシが更新されました。
 
+👇 最新チラシはこちら
 
-with open(
-    PDF_FILE,
-    "wb"
-) as f:
+{pdf}
 
-    f.write(
-        pdf_response.content
-    )
-
-
-# PDFを画像化
-
-images = convert_from_path(
-    PDF_FILE,
-    dpi=120
-)
-
-
-# 1ページ目のみ解析（無料枠対策）
-
-image = images[0]
-
-prompt = """
-
-あなたはスーパーの節約アドバイザーです。
-
-ベルクスのチラシ画像を分析してください。
-
-目的：
-今週スーパーで買う価値が高い商品を紹介する。
-
-選ぶ基準：
-・価格が安い
-・普段使いやすい
-・特売感が強い
-・家計節約になる
-
-出力：
-
-🛒 ベルクス今週のお買得情報
-
-
-🥇 商品名
-💰 価格
-⭐ おすすめ理由
-
-
-🥈 商品名
-💰 価格
-⭐ おすすめ理由
-
-
-🥉 商品名
-💰 価格
-⭐ おすすめ理由
-
-
-🔥 今週買うならおすすめ
-
-・商品名
-・商品名
-・商品名
-
-
-※読み取れない商品は推測しない
-※文字化けした場合は無理に出力しない
+買い物前にチェックしてください🛒
 """
 
-
-# Gemini解析
-
-result = client.models.generate_content(
-
-    model="gemini-2.0-flash-lite",
-
-    contents=[
-        prompt,
-        image
-    ]
-
-)
-
-
-message = result.text
-
-
-
-message += (
-
-    "\n\n👇 チラシ全文\n"
-
-    + pdf
-
-)
-
-
-
-# LINE送信
 
 send_line(
     message
 )
 
 
-
 # 最新PDF保存
 
 with open(
     LAST_FILE,
-    "w"
+    "w",
+    encoding="utf-8"
 ) as f:
 
     f.write(pdf)
