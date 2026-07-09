@@ -1,9 +1,10 @@
 import os
-import re
 import requests
 from bs4 import BeautifulSoup
 from pdf2image import convert_from_path
-import pytesseract
+
+from google import genai
+
 from linebot import LineBotApi
 from linebot.models import TextSendMessage
 
@@ -18,43 +19,40 @@ headers = {
 }
 
 
-# LINE設定
+# 環境変数
 LINE_USER_ID = os.environ["LINE_USER_ID"]
 LINE_CHANNEL_ACCESS_TOKEN = os.environ["LINE_CHANNEL_ACCESS_TOKEN"]
+GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 
+
+# LINE
 line_bot_api = LineBotApi(
     LINE_CHANNEL_ACCESS_TOKEN
 )
 
 
-def send_line(message):
+# Gemini
+client = genai.Client(
+    api_key=GEMINI_API_KEY
+)
+
+
+def send_line(text):
 
     line_bot_api.push_message(
         LINE_USER_ID,
-        TextSendMessage(text=message)
+        TextSendMessage(text=text)
     )
 
 
 
 # ベルクスページ取得
-for i in range(3):
 
-    try:
-
-        response = requests.get(
-            URL,
-            headers=headers,
-            timeout=60
-        )
-
-        break
-
-    except requests.exceptions.RequestException:
-
-        if i == 2:
-            raise
-
-
+response = requests.get(
+    URL,
+    headers=headers,
+    timeout=60
+)
 
 response.raise_for_status()
 
@@ -65,9 +63,6 @@ soup = BeautifulSoup(
 )
 
 
-
-# PDF取得
-
 pdf = None
 
 
@@ -75,25 +70,22 @@ for a in soup.find_all("a", href=True):
 
     href = a["href"]
 
-
     if ".pdf" in href.lower():
 
         if href.startswith("/"):
 
             href = "https://sunbelx.com" + href
 
-
         pdf = href
         break
 
 
 
-if pdf is None:
+if not pdf:
 
     raise Exception(
         "PDFが見つかりません"
     )
-
 
 
 print("最新PDF:", pdf)
@@ -102,326 +94,162 @@ print("最新PDF:", pdf)
 
 # 更新確認
 
-last_pdf = ""
-
+old = ""
 
 if os.path.exists(LAST_FILE):
 
-    with open(LAST_FILE, "r") as f:
+    with open(
+        LAST_FILE,
+        "r"
+    ) as f:
 
-        last_pdf = f.read().strip()
+        old = f.read().strip()
 
 
 
-if pdf == last_pdf:
+if pdf == old:
 
     print("更新なし")
 
+    exit()
 
 
-else:
 
+print(
+    "★★★★ 新しいチラシを検知しました！★★★★"
+)
 
-    print(
-        "★★★★ 新しいチラシを検知しました！★★★★"
-    )
 
 
-    # PDF保存
+# PDF保存
 
-    pdf_data = requests.get(
-        pdf,
-        headers=headers,
-        timeout=60
-    ).content
+data = requests.get(
+    pdf,
+    timeout=60
+).content
 
 
+with open(
+    PDF_FILE,
+    "wb"
+) as f:
 
-    with open(PDF_FILE, "wb") as f:
+    f.write(data)
 
-        f.write(pdf_data)
 
 
+# PDF → 画像
 
-    # PDF→画像
+images = convert_from_path(
+    PDF_FILE,
+    dpi=150
+)
 
-    images = convert_from_path(
-        PDF_FILE,
-        dpi=250
-    )
 
 
+prompt = """
 
-    # OCR（4分割）
+あなたはスーパーの節約アドバイザーです。
 
-    all_text = ""
+このベルクスのチラシから、
+今週買う価値が高い商品を分析してください。
 
 
-    for image in images:
+条件：
 
+・単純な安さだけで判断しない
+・普段の家庭料理で使いやすい商品を優先
+・特売感が強い商品を選ぶ
+・肉、魚、野菜、日用品など幅広く見る
 
-        width, height = image.size
 
+出力形式：
 
-        areas = [
+🛒 ベルクス今週のお買得情報
 
-            (0, 0, width//2, height//2),
 
-            (width//2, 0, width, height//2),
+🥩 肉類
+商品名：
+価格：
+おすすめ理由：
 
-            (0, height//2, width//2, height),
 
-            (width//2, height//2, width, height)
+🐟 魚類
+商品名：
+価格：
+おすすめ理由：
 
-        ]
 
+🥬 野菜・果物
+商品名：
+価格：
+おすすめ理由：
 
 
-        for area in areas:
+🥚 食品・その他
+商品名：
+価格：
+おすすめ理由：
 
 
-            crop = image.crop(area)
+🔥 今週特におすすめTOP5
 
+1.
+2.
+3.
+4.
+5.
 
-            text = pytesseract.image_to_string(
 
-                crop,
+読み取れない商品は無理に推測しないでください。
+"""
 
-                lang="jpn"
 
-            )
+contents = [prompt]
 
 
-            all_text += "\n" + text
+for image in images:
 
+    contents.append(image)
 
 
 
-    lines = [
+result = client.models.generate_content(
 
-        x.strip()
+    model="gemini-2.0-flash",
 
-        for x in all_text.split("\n")
+    contents=contents
 
-        if x.strip()
+)
 
-    ]
 
 
+message = result.text
 
-    products = []
 
+message += (
 
+    "\n\n👇 チラシ全文\n"
 
-    # 商品候補抽出
+    + pdf
 
-    for i, line in enumerate(lines):
+)
 
 
-        price_match = re.search(
 
-            r"(\d{2,4})\s*円",
+send_line(message)
 
-            line
 
-        )
 
+# 保存
 
-        if price_match:
+with open(
+    LAST_FILE,
+    "w"
+) as f:
 
+    f.write(pdf)
 
-            price = int(
 
-                price_match.group(1)
 
-            )
-
-
-
-            # 異常値除外
-
-            if price < 80 or price > 1500:
-
-                continue
-
-
-
-            candidates = []
-
-
-
-            # 前3行を見る
-
-            for n in range(1,4):
-
-
-                if i-n >= 0:
-
-
-                    text = lines[i-n]
-
-
-
-                    # OCRノイズ除外
-
-                    if (
-
-                        len(text) >= 3
-
-                        and not re.search(
-
-                            r"[|@_]",
-
-                            text
-
-                        )
-
-                    ):
-
-                        candidates.append(text)
-
-
-
-            if candidates:
-
-
-                name = max(
-
-                    candidates,
-
-                    key=len
-
-                )
-
-
-
-                if len(name) < 35:
-
-
-                    products.append(
-
-                        {
-
-                            "name": name,
-
-                            "price": price
-
-                        }
-
-                    )
-
-
-
-
-
-    # 重複削除
-
-    unique = []
-
-    seen = set()
-
-
-
-    for item in products:
-
-
-        key = (
-
-            item["name"],
-
-            item["price"]
-
-        )
-
-
-
-        if key not in seen:
-
-
-            seen.add(key)
-
-            unique.append(item)
-
-
-
-
-    # TOP3
-
-    top3 = sorted(
-
-        unique,
-
-        key=lambda x:x["price"]
-
-    )[:3]
-
-
-
-
-    message = (
-
-        "🛒 ベルクス今週のお買得候補\n\n"
-
-    )
-
-
-
-    if top3:
-
-
-        emoji = [
-
-            "🥇",
-
-            "🥈",
-
-            "🥉"
-
-        ]
-
-
-
-        for i, item in enumerate(top3):
-
-
-            message += (
-
-                f"{emoji[i]} {item['name']}\n"
-
-                f"💰 {item['price']}円\n\n"
-
-            )
-
-
-
-    else:
-
-
-        message += (
-
-            "商品を抽出できませんでした"
-
-        )
-
-
-
-
-    message += (
-
-        "\n👇 チラシ全文\n"
-
-        + pdf
-
-    )
-
-
-
-    send_line(message)
-
-
-
-    # 最新PDF保存
-
-    with open(LAST_FILE, "w") as f:
-
-        f.write(pdf)
+print("LINE送信完了")
