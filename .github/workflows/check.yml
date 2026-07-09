@@ -1,0 +1,24 @@
+name: Check Belx Flyer
+
+on:
+  schedule:
+    # 毎週土曜日 9:00（日本時間）
+    - cron: "0 0 * * 6"
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run script
+        run: python app.py
