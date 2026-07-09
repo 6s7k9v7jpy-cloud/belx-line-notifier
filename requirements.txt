@@ -3,4 +3,4 @@ beautifulsoup4
 line-bot-sdk
 pdf2image
 Pillow
-google-generativeai
+google-genai
