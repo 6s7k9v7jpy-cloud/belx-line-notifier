@@ -19,29 +19,29 @@ headers = {
 }
 
 
-# 環境変数
 LINE_USER_ID = os.environ["LINE_USER_ID"]
 LINE_CHANNEL_ACCESS_TOKEN = os.environ["LINE_CHANNEL_ACCESS_TOKEN"]
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 
 
-# LINE
 line_bot_api = LineBotApi(
     LINE_CHANNEL_ACCESS_TOKEN
 )
 
 
-# Gemini
 client = genai.Client(
     api_key=GEMINI_API_KEY
 )
 
 
-def send_line(text):
+
+def send_line(message):
 
     line_bot_api.push_message(
         LINE_USER_ID,
-        TextSendMessage(text=text)
+        TextSendMessage(
+            text=message
+        )
     )
 
 
@@ -63,10 +63,14 @@ soup = BeautifulSoup(
 )
 
 
+
 pdf = None
 
 
-for a in soup.find_all("a", href=True):
+for a in soup.find_all(
+    "a",
+    href=True
+):
 
     href = a["href"]
 
@@ -81,20 +85,25 @@ for a in soup.find_all("a", href=True):
 
 
 
-if not pdf:
+if pdf is None:
 
     raise Exception(
         "PDFが見つかりません"
     )
 
 
-print("最新PDF:", pdf)
+
+print(
+    "最新PDF:",
+    pdf
+)
 
 
 
-# 更新確認
+# 更新チェック
 
-old = ""
+old_pdf = ""
+
 
 if os.path.exists(LAST_FILE):
 
@@ -103,13 +112,15 @@ if os.path.exists(LAST_FILE):
         "r"
     ) as f:
 
-        old = f.read().strip()
+        old_pdf = f.read().strip()
 
 
 
-if pdf == old:
+if pdf == old_pdf:
 
-    print("更新なし")
+    print(
+        "更新なし"
+    )
 
     exit()
 
@@ -123,7 +134,7 @@ print(
 
 # PDF保存
 
-data = requests.get(
+pdf_data = requests.get(
     pdf,
     timeout=60
 ).content
@@ -134,16 +145,22 @@ with open(
     "wb"
 ) as f:
 
-    f.write(data)
+    f.write(pdf_data)
 
 
 
-# PDF → 画像
+# PDFを画像化
 
 images = convert_from_path(
     PDF_FILE,
-    dpi=150
+    dpi=120
 )
+
+
+
+# まず1ページだけ解析
+
+image = images[0]
 
 
 
@@ -151,66 +168,34 @@ prompt = """
 
 あなたはスーパーの節約アドバイザーです。
 
-このベルクスのチラシから、
-今週買う価値が高い商品を分析してください。
-
+このベルクスのチラシ画像から、
+おすすめの商品を選んでください。
 
 条件：
-
-・単純な安さだけで判断しない
-・普段の家庭料理で使いやすい商品を優先
-・特売感が強い商品を選ぶ
-・肉、魚、野菜、日用品など幅広く見る
-
+・安いだけではなくお得感を見る
+・家庭で使いやすい商品を優先
+・肉、魚、野菜、食品を中心に選ぶ
 
 出力形式：
 
-🛒 ベルクス今週のお買得情報
+🛒 ベルクス今週のお買得
 
-
-🥩 肉類
-商品名：
+🥇 商品名
 価格：
 おすすめ理由：
 
-
-🐟 魚類
-商品名：
+🥈 商品名
 価格：
 おすすめ理由：
 
-
-🥬 野菜・果物
-商品名：
+🥉 商品名
 価格：
 おすすめ理由：
 
-
-🥚 食品・その他
-商品名：
-価格：
-おすすめ理由：
-
-
-🔥 今週特におすすめTOP5
-
-1.
-2.
-3.
-4.
-5.
-
-
-読み取れない商品は無理に推測しないでください。
+最後に
+「今週買うなら」
+を3〜5個まとめてください。
 """
-
-
-contents = [prompt]
-
-
-for image in images:
-
-    contents.append(image)
 
 
 
@@ -218,7 +203,10 @@ result = client.models.generate_content(
 
     model="gemini-2.0-flash",
 
-    contents=contents
+    contents=[
+        prompt,
+        image
+    ]
 
 )
 
@@ -237,11 +225,11 @@ message += (
 
 
 
-send_line(message)
+send_line(
+    message
+)
 
 
-
-# 保存
 
 with open(
     LAST_FILE,
@@ -252,4 +240,6 @@ with open(
 
 
 
-print("LINE送信完了")
+print(
+    "LINE送信完了"
+)
