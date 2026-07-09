@@ -15,7 +15,8 @@ PDF_FILE = "flyer.pdf"
 
 
 headers = {
-    "User-Agent": "Mozilla/5.0"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+    "Accept-Language": "ja-JP,ja;q=0.9"
 }
 
 
@@ -34,7 +35,6 @@ client = genai.Client(
 )
 
 
-
 def send_line(message):
 
     line_bot_api.push_message(
@@ -45,23 +45,29 @@ def send_line(message):
     )
 
 
-
 # ベルクスページ取得
 
-response = requests.get(
-    URL,
-    headers=headers,
-    timeout=60
-)
+try:
 
-response.raise_for_status()
+    response = requests.get(
+        URL,
+        headers=headers,
+        timeout=(10,120)
+    )
+
+    response.raise_for_status()
+
+except Exception as e:
+
+    raise Exception(
+        f"ベルクスページ取得失敗: {e}"
+    )
 
 
 soup = BeautifulSoup(
     response.text,
     "html.parser"
 )
-
 
 
 pdf = None
@@ -84,13 +90,11 @@ for a in soup.find_all(
         break
 
 
-
 if pdf is None:
 
     raise Exception(
-        "PDFが見つかりません"
+        "PDFが見つかりませんでした"
     )
-
 
 
 print(
@@ -99,8 +103,7 @@ print(
 )
 
 
-
-# 更新チェック
+# 更新確認
 
 old_pdf = ""
 
@@ -131,13 +134,15 @@ print(
 )
 
 
+# PDFダウンロード
 
-# PDF保存
-
-pdf_data = requests.get(
+pdf_response = requests.get(
     pdf,
-    timeout=60
-).content
+    headers=headers,
+    timeout=(10,120)
+)
+
+pdf_response.raise_for_status()
 
 
 with open(
@@ -145,8 +150,9 @@ with open(
     "wb"
 ) as f:
 
-    f.write(pdf_data)
-
+    f.write(
+        pdf_response.content
+    )
 
 
 # PDFを画像化
@@ -157,47 +163,58 @@ images = convert_from_path(
 )
 
 
-
-# まず1ページだけ解析
+# 1ページ目のみ解析（無料枠対策）
 
 image = images[0]
-
-
 
 prompt = """
 
 あなたはスーパーの節約アドバイザーです。
 
-このベルクスのチラシ画像から、
-おすすめの商品を選んでください。
+ベルクスのチラシ画像を分析してください。
 
-条件：
-・安いだけではなくお得感を見る
-・家庭で使いやすい商品を優先
-・肉、魚、野菜、食品を中心に選ぶ
+目的：
+今週スーパーで買う価値が高い商品を紹介する。
 
-出力形式：
+選ぶ基準：
+・価格が安い
+・普段使いやすい
+・特売感が強い
+・家計節約になる
 
-🛒 ベルクス今週のお買得
+出力：
+
+🛒 ベルクス今週のお買得情報
+
 
 🥇 商品名
-価格：
-おすすめ理由：
+💰 価格
+⭐ おすすめ理由
+
 
 🥈 商品名
-価格：
-おすすめ理由：
+💰 価格
+⭐ おすすめ理由
+
 
 🥉 商品名
-価格：
-おすすめ理由：
+💰 価格
+⭐ おすすめ理由
 
-最後に
-「今週買うなら」
-を3〜5個まとめてください。
+
+🔥 今週買うならおすすめ
+
+・商品名
+・商品名
+・商品名
+
+
+※読み取れない商品は推測しない
+※文字化けした場合は無理に出力しない
 """
 
 
+# Gemini解析
 
 result = client.models.generate_content(
 
@@ -211,8 +228,8 @@ result = client.models.generate_content(
 )
 
 
-
 message = result.text
+
 
 
 message += (
@@ -225,11 +242,15 @@ message += (
 
 
 
+# LINE送信
+
 send_line(
     message
 )
 
 
+
+# 最新PDF保存
 
 with open(
     LAST_FILE,
