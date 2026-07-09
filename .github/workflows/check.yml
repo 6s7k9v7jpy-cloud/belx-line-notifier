@@ -2,7 +2,6 @@ name: Check Belx Flyer
 
 on:
   schedule:
-    # 毎週土曜日 9:00（日本時間）
     - cron: "0 0 * * 6"
   workflow_dispatch:
 
@@ -19,10 +18,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install PDF tools
+      - name: Install OCR
         run: |
           sudo apt-get update
-          sudo apt-get install -y poppler-utils
+          sudo apt-get install -y tesseract-ocr tesseract-ocr-jpn poppler-utils
 
       - name: Install dependencies
         run: |
@@ -32,6 +31,5 @@ jobs:
         env:
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           python app.py
