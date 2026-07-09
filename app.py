@@ -43,12 +43,20 @@ model = genai.GenerativeModel(
 )
 
 
-# ベルクスページ取得
-response = requests.get(
-    URL,
-    headers=headers,
-    timeout=30
-)
+# ベルクスページ取得（リトライ付き）
+for i in range(3):
+    try:
+        response = requests.get(
+            URL,
+            headers=headers,
+            timeout=60
+        )
+        break
+
+    except requests.exceptions.RequestException:
+        if i == 2:
+            raise
+
 
 response.raise_for_status()
 
@@ -99,49 +107,57 @@ else:
     print("★★★★ 新しいチラシを検知しました！★★★★")
 
 
-    # PDF保存
-    pdf_data = requests.get(pdf).content
+    # PDF取得
+    pdf_data = requests.get(
+        pdf,
+        headers=headers,
+        timeout=60
+    ).content
+
 
     with open(PDF_FILE, "wb") as f:
         f.write(pdf_data)
 
 
-    # PDF→画像
+    # PDFを画像化（2ページ対応）
     images = convert_from_path(
         PDF_FILE,
         dpi=200
     )
 
 
-    # Geminiへ送信
     prompt = """
 あなたはスーパーのチラシ分析担当です。
 
-このベルクス1週間チラシから、
-本当にお得な商品TOP3を選んでください。
+ベルクスの1週間チラシ画像を分析してください。
 
-基準：
+目的：
+買い物する人が「これは買うべき」と思える
+お買得商品TOP3を選ぶ。
+
+判断基準：
 ・価格が安い
 ・普段使いやすい
 ・特売感が強い
+・コスパが良い
 
-以下の形式で回答してください。
+出力形式：
 
 🛒 ベルクス今週のお買得TOP3
 
 🥇 商品名
 価格：
-理由：
+おすすめ理由：
 
 🥈 商品名
 価格：
-理由：
+おすすめ理由：
 
 🥉 商品名
 価格：
-理由：
+おすすめ理由：
 
-余計な説明はいりません。
+余計な説明は不要です。
 """
 
 
