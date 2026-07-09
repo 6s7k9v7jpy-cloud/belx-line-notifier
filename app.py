@@ -3,10 +3,13 @@ import requests
 from bs4 import BeautifulSoup
 from linebot import LineBotApi
 from linebot.models import TextSendMessage
+from pdf2image import convert_from_path
+import pytesseract
 
 
 URL = "https://sunbelx.com/store/27"
 LAST_FILE = "last_flyer.txt"
+PDF_FILE = "flyer.pdf"
 
 
 headers = {
@@ -56,7 +59,6 @@ if pdf is None:
 print("最新PDF:", pdf)
 
 
-# 前回PDF確認
 last_pdf = ""
 
 if os.path.exists(LAST_FILE):
@@ -64,20 +66,57 @@ if os.path.exists(LAST_FILE):
         last_pdf = f.read().strip()
 
 
-# 更新なし
 if pdf == last_pdf:
+
     print("更新なし")
 
 
-# 新しいチラシ発見
 else:
+
     print("★★★★ 新しいチラシを検知しました！★★★★")
 
 
-    send_line(
-        "🛒 ベルクスの新しいチラシが公開されました！\n\n"
+    # PDFダウンロード
+    pdf_data = requests.get(pdf).content
+
+    with open(PDF_FILE, "wb") as f:
+        f.write(pdf_data)
+
+
+    # PDFを画像化
+    images = convert_from_path(
+        PDF_FILE,
+        dpi=200
+    )
+
+
+    flyer_text = ""
+
+    # OCR
+    for image in images:
+
+        text = pytesseract.image_to_string(
+            image,
+            lang="jpn"
+        )
+
+        flyer_text += text
+
+
+    # 長すぎ防止
+    flyer_text = flyer_text[:1500]
+
+
+    message = (
+        "🛒 ベルクス新着チラシ\n\n"
+        "📌 チラシ内容\n\n"
+        + flyer_text
+        + "\n\n👇 PDF\n"
         + pdf
     )
+
+
+    send_line(message)
 
 
     with open(LAST_FILE, "w") as f:
