@@ -1,13 +1,17 @@
 import os
 import requests
 from bs4 import BeautifulSoup
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from linebot import LineBotApi
 from linebot.models import TextSendMessage
 
 
 URL = "https://sunbelx.com/store/27"
+
 LAST_FILE = "last_flyer.txt"
+NOTIFIED_FILE = "last_notified_date.txt"
 
 
 headers = {
@@ -35,7 +39,38 @@ def send_line(message):
     )
 
 
+# ==============================
+# 今日すでに通知済みか確認
+# ==============================
+
+today = datetime.now(
+    ZoneInfo("Asia/Tokyo")
+).date().isoformat()
+
+
+if os.path.exists(NOTIFIED_FILE):
+
+    with open(
+        NOTIFIED_FILE,
+        "r",
+        encoding="utf-8"
+    ) as f:
+
+        last_notified_date = f.read().strip()
+
+
+    if last_notified_date == today:
+
+        print(
+            f"本日 {today} はすでに新チラシを検知済み。調査終了。"
+        )
+
+        exit(0)
+
+
+# ==============================
 # ベルクスページ取得
+# ==============================
 
 try:
 
@@ -93,7 +128,9 @@ print(
 )
 
 
+# ==============================
 # 前回PDF確認
+# ==============================
 
 old_pdf = ""
 
@@ -109,15 +146,13 @@ if os.path.exists(LAST_FILE):
         old_pdf = f.read().strip()
 
 
-
 if pdf == old_pdf:
 
     print(
         "更新なし"
     )
 
-    exit()
-
+    exit(0)
 
 
 print(
@@ -125,7 +160,9 @@ print(
 )
 
 
+# ==============================
 # LINE通知
+# ==============================
 
 message = f"""
 ★★★★ 新しいベルクスチラシを検知しました！★★★★
@@ -145,7 +182,9 @@ send_line(
 )
 
 
+# ==============================
 # 最新PDF保存
+# ==============================
 
 with open(
     LAST_FILE,
@@ -156,7 +195,19 @@ with open(
     f.write(pdf)
 
 
+# ==============================
+# 本日は通知済みとして保存
+# ==============================
+
+with open(
+    NOTIFIED_FILE,
+    "w",
+    encoding="utf-8"
+) as f:
+
+    f.write(today)
+
 
 print(
-    "LINE送信完了"
+    f"LINE送信完了。本日 {today} の監視を終了します。"
 )
