@@ -2,10 +2,9 @@ name: Check Belx Flyer
 
 on:
   schedule:
-    # 毎週土曜日 10:00（日本時間）
-    - cron: "0 1 * * 6"
-    # 毎週土曜日 12:00（日本時間）
-    - cron: "0 3 * * 6"
+    # 毎週土曜日 7:00〜23:55、5分おき（日本時間）
+    - cron: "*/5 7-23 * * 6"
+      timezone: "Asia/Tokyo"
 
   workflow_dispatch:
 
@@ -33,7 +32,6 @@ jobs:
         env:
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
-
         run: |
           python app.py
 
@@ -43,7 +41,5 @@ jobs:
           git config --global user.email "github-actions@github.com"
 
           git add last_flyer.txt
-
           git commit -m "Update last flyer" || exit 0
-
           git push
